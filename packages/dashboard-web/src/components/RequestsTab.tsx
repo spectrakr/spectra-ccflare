@@ -284,7 +284,8 @@ export function RequestsTab() {
 			if (str === "[streamed]") {
 				return "[Streaming data not captured]";
 			}
-			return atob(str);
+			const bytes = Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+			return new TextDecoder().decode(bytes);
 		} catch (error) {
 			console.error("Failed to decode base64:", error, "Input:", str);
 			return `Failed to decode: ${str}`;
