@@ -235,11 +235,11 @@ export function createAnalyticsHandler(context: APIContext) {
 			`);
 
 			const consolidatedResult = consolidatedQuery.get(
-				bucket.bucketMs,
-				bucket.bucketMs,
-				NO_ACCOUNT_ID,
-				NO_ACCOUNT_ID,
 				...queryParams,
+				bucket.bucketMs,
+				bucket.bucketMs,
+				NO_ACCOUNT_ID,
+				NO_ACCOUNT_ID,
 			) as {
 				total_requests: number;
 				success_rate: number;
