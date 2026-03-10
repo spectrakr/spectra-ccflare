@@ -170,6 +170,7 @@ export async function handleProxy(
 	ctx: ProxyContext,
 	apiKeyId?: string | null,
 	apiKeyName?: string | null,
+	clientIp?: string | null,
 ): Promise<Response> {
 	// 0. Silently ignore Claude Code internal endpoints (non-critical, not supported by all providers)
 	if (
@@ -247,6 +248,7 @@ export async function handleProxy(
 	// 5. Create request metadata with agent info
 	const requestMeta = createRequestMetadata(req, url);
 	requestMeta.agentUsed = agentUsed;
+	requestMeta.clientIp = clientIp || null;
 
 	// 6. Select accounts
 	const accounts = await selectAccountsForRequest(requestMeta, ctx);

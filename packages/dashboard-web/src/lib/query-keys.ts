@@ -20,4 +20,5 @@ export const queryKeys = {
 	logHistory: () => [...queryKeys.all, "logs", "history"] as const,
 	defaultAgentModel: () =>
 		[...queryKeys.all, "config", "defaultAgentModel"] as const,
+	clientIpAliases: () => [...queryKeys.all, "client-ip-aliases"] as const,
 } as const;

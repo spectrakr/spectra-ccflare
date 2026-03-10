@@ -5,10 +5,23 @@ import {
 	formatTokensPerSecond,
 } from "@better-ccflare/ui-common";
 import { format } from "date-fns";
-import { Activity, CheckCircle, Clock, DollarSign, Zap } from "lucide-react";
+import {
+	Activity,
+	CheckCircle,
+	Clock,
+	DollarSign,
+	Globe,
+	Zap,
+} from "lucide-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { REFRESH_INTERVALS } from "../constants";
-import { useAccounts, useAnalytics, useStats } from "../hooks/queries";
+import {
+	useAccounts,
+	useAnalytics,
+	useDeleteClientIpAlias,
+	useStats,
+	useUpsertClientIpAlias,
+} from "../hooks/queries";
 import { ChartsSection } from "./overview/ChartsSection";
 import { DataRetentionCard } from "./overview/DataRetentionCard";
 import { LoadingSkeleton } from "./overview/LoadingSkeleton";
@@ -19,6 +32,27 @@ import { TimeRangeSelector } from "./overview/TimeRangeSelector";
 import { StrategyCard } from "./StrategyCard";
 
 export const OverviewTab = React.memo(() => {
+	// Inline edit state for client IP aliases
+	const [editingIp, setEditingIp] = useState<string | null>(null);
+	const [editAlias, setEditAlias] = useState("");
+	const upsertAlias = useUpsertClientIpAlias();
+	const deleteAlias = useDeleteClientIpAlias();
+
+	const handleAliasEdit = (ip: string, currentAlias?: string) => {
+		setEditingIp(ip);
+		setEditAlias(currentAlias ?? "");
+	};
+
+	const handleAliasSave = async (ip: string) => {
+		const trimmed = editAlias.trim();
+		if (trimmed) {
+			await upsertAlias.mutateAsync({ ip, alias: trimmed });
+		} else {
+			await deleteAlias.mutateAsync(ip);
+		}
+		setEditingIp(null);
+	};
+
 	// Fetch all data using React Query hooks
 	const { data: stats, isLoading: statsLoading } = useStats(
 		REFRESH_INTERVALS.default,
@@ -234,6 +268,91 @@ export const OverviewTab = React.memo(() => {
 			<SystemStatus recentErrors={stats?.recentErrors} />
 
 			{accounts && <RateLimitInfo accounts={accounts} />}
+
+			{/* Top Client IPs */}
+			{stats?.topClientIps && stats.topClientIps.length > 0 && (
+				<div className="rounded-lg border bg-card p-4">
+					<div className="flex items-center gap-2 mb-3">
+						<Globe className="h-4 w-4 text-muted-foreground" />
+						<h3 className="text-sm font-medium">Top Client IPs</h3>
+					</div>
+					<div className="space-y-2">
+						{stats.topClientIps.slice(0, 8).map((entry) => (
+							<div
+								key={entry.ip}
+								className="flex items-center justify-between text-sm"
+							>
+								<div className="flex items-center gap-2 min-w-0">
+									{editingIp === entry.ip ? (
+										<div className="flex items-center gap-1">
+											<input
+												type="text"
+												value={editAlias}
+												onChange={(e) => setEditAlias(e.target.value)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") handleAliasSave(entry.ip);
+													if (e.key === "Escape") setEditingIp(null);
+												}}
+												placeholder="Enter alias..."
+												className="h-6 text-xs border rounded px-1 w-28 bg-background"
+												// biome-ignore lint/a11y/noAutofocus: intentional focus for inline edit
+												autoFocus
+											/>
+											<button
+												type="button"
+												onClick={() => handleAliasSave(entry.ip)}
+												className="text-xs text-primary hover:underline"
+											>
+												Save
+											</button>
+											<button
+												type="button"
+												onClick={() => setEditingIp(null)}
+												className="text-xs text-muted-foreground hover:underline"
+											>
+												Cancel
+											</button>
+										</div>
+									) : (
+										<>
+											<span
+												title={entry.alias ? entry.ip : undefined}
+												className="font-mono text-xs text-muted-foreground truncate max-w-[140px]"
+											>
+												{entry.alias ?? entry.ip}
+											</span>
+											<button
+												type="button"
+												onClick={() => handleAliasEdit(entry.ip, entry.alias)}
+												className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+												title="Edit alias"
+											>
+												✏️
+											</button>
+										</>
+									)}
+								</div>
+								<div className="flex items-center gap-3 shrink-0">
+									<span className="text-muted-foreground">
+										{formatNumber(entry.requests)} reqs
+									</span>
+									<span
+										className={
+											entry.successRate >= 90
+												? "text-green-500"
+												: entry.successRate >= 70
+													? "text-yellow-500"
+													: "text-red-500"
+										}
+									>
+										{entry.successRate}%
+									</span>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 
 			{/* Configuration Row */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

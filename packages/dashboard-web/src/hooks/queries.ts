@@ -42,6 +42,7 @@ export const useAnalytics = (
 		accounts?: string[];
 		models?: string[];
 		apiKeys?: string[];
+		clientIps?: string[];
 		status?: "all" | "success" | "error";
 	},
 	viewMode: "normal" | "cumulative",
@@ -273,5 +274,37 @@ export const useCleanupNow = () => {
 export const useCompactDb = () => {
 	return useMutation({
 		mutationFn: () => api.compactDb(),
+	});
+};
+
+export const useClientIpAliases = () => {
+	return useQuery({
+		queryKey: queryKeys.clientIpAliases(),
+		queryFn: () => api.getClientIpAliases(),
+		staleTime: 60000,
+		gcTime: 10 * 60 * 1000,
+	});
+};
+
+export const useUpsertClientIpAlias = () => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ ip, alias }: { ip: string; alias: string }) =>
+			api.upsertClientIpAlias(ip, alias),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: queryKeys.clientIpAliases() });
+			queryClient.invalidateQueries({ queryKey: queryKeys.stats() });
+		},
+	});
+};
+
+export const useDeleteClientIpAlias = () => {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (ip: string) => api.deleteClientIpAlias(ip),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: queryKeys.clientIpAliases() });
+			queryClient.invalidateQueries({ queryKey: queryKeys.stats() });
+		},
 	});
 };

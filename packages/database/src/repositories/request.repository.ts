@@ -13,6 +13,7 @@ export interface RequestData {
 	agentUsed?: string;
 	apiKeyId?: string;
 	apiKeyName?: string;
+	clientIp?: string;
 	usage?: {
 		model?: string;
 		promptTokens?: number;
@@ -37,15 +38,16 @@ export class RequestRepository extends BaseRepository<RequestData> {
 		timestamp?: number,
 		apiKeyId?: string,
 		apiKeyName?: string,
+		clientIp?: string,
 	): Promise<void> {
 		await this.run(
 			`
 			INSERT INTO requests (
 				id, timestamp, method, path, account_used,
 				status_code, success, error_message, response_time_ms, failover_attempts,
-				api_key_id, api_key_name
+				api_key_id, api_key_name, client_ip
 			)
-			VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0, 0, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0, 0, ?, ?, ?)
 		`,
 			[
 				id,
@@ -56,6 +58,7 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				statusCode,
 				apiKeyId || null,
 				apiKeyName || null,
+				clientIp || null,
 			],
 		);
 	}
@@ -69,9 +72,9 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				status_code, success, error_message, response_time_ms, failover_attempts,
 				model, prompt_tokens, completion_tokens, total_tokens, cost_usd,
 				input_tokens, cache_read_input_tokens, cache_creation_input_tokens, output_tokens,
-				agent_used, output_tokens_per_second, api_key_id, api_key_name
+				agent_used, output_tokens_per_second, api_key_id, api_key_name, client_ip
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (id) DO UPDATE SET
 				timestamp = EXCLUDED.timestamp,
 				method = EXCLUDED.method,
@@ -94,7 +97,8 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				agent_used = EXCLUDED.agent_used,
 				output_tokens_per_second = EXCLUDED.output_tokens_per_second,
 				api_key_id = EXCLUDED.api_key_id,
-				api_key_name = EXCLUDED.api_key_name
+				api_key_name = EXCLUDED.api_key_name,
+				client_ip = EXCLUDED.client_ip
 		`,
 			[
 				data.id,
@@ -120,6 +124,7 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				usage?.tokensPerSecond || null,
 				data.apiKeyId || null,
 				data.apiKeyName || null,
+				data.clientIp || null,
 			],
 		);
 	}

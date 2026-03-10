@@ -720,6 +720,7 @@ class API extends HttpClient {
 			accounts?: string[];
 			models?: string[];
 			apiKeys?: string[];
+			clientIps?: string[];
 			status?: "all" | "success" | "error";
 		},
 		mode: "normal" | "cumulative" = "normal",
@@ -735,6 +736,9 @@ class API extends HttpClient {
 		}
 		if (filters?.apiKeys?.length) {
 			params.append("apiKeys", filters.apiKeys.join(","));
+		}
+		if (filters?.clientIps?.length) {
+			params.append("clientIps", filters.clientIps.join(","));
 		}
 		if (filters?.status && filters.status !== "all") {
 			params.append("status", filters.status);
@@ -1463,6 +1467,30 @@ class API extends HttpClient {
 			}
 			throw error;
 		}
+	}
+
+	async getClientIpAliases(): Promise<
+		Array<{ ip: string; alias: string; createdAt: number; updatedAt: number }>
+	> {
+		return this.get("/api/client-ip-aliases");
+	}
+
+	async upsertClientIpAlias(
+		ip: string,
+		alias: string,
+	): Promise<{
+		ip: string;
+		alias: string;
+		createdAt: number;
+		updatedAt: number;
+	}> {
+		return this.put(`/api/client-ip-aliases/${encodeURIComponent(ip)}`, {
+			alias,
+		});
+	}
+
+	async deleteClientIpAlias(ip: string): Promise<void> {
+		await this.delete(`/api/client-ip-aliases/${encodeURIComponent(ip)}`);
 	}
 }
 

@@ -397,6 +397,7 @@ async function handleStart(msg: StartMessage): Promise<void> {
 				msg.timestamp,
 				msg.apiKeyId || undefined,
 				msg.apiKeyName || undefined,
+				msg.clientIp || undefined,
 			);
 			if (
 				process.env.DEBUG?.includes("worker") ||
@@ -622,6 +623,7 @@ async function handleEnd(msg: EndMessage): Promise<void> {
 			state.agentUsed,
 			startMessage.apiKeyId || undefined,
 			startMessage.apiKeyName || undefined,
+			startMessage.clientIp || undefined,
 		),
 	);
 
@@ -708,6 +710,7 @@ async function handleEnd(msg: EndMessage): Promise<void> {
 		tokensPerSecond: state.usage.tokensPerSecond,
 		apiKeyId: startMessage.apiKeyId || undefined,
 		apiKeyName: startMessage.apiKeyName || undefined,
+		clientIp: startMessage.clientIp || undefined,
 	};
 
 	self.postMessage({

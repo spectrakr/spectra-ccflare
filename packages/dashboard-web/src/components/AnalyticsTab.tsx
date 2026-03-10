@@ -24,6 +24,7 @@ export const AnalyticsTab = React.memo(() => {
 		accounts: [],
 		models: [],
 		apiKeys: [],
+		clientIps: [],
 		status: "all",
 	});
 
@@ -36,12 +37,15 @@ export const AnalyticsTab = React.memo(() => {
 	);
 
 	// Get unique accounts and models from analytics data
-	// Accumulate all seen accounts/models/apiKeys to maintain full list for filters
+	// Accumulate all seen accounts/models/apiKeys/clientIps to maintain full list for filters
 	const [allSeenAccounts, setAllSeenAccounts] = useState<Set<string>>(
 		new Set(),
 	);
 	const [allSeenModels, setAllSeenModels] = useState<Set<string>>(new Set());
 	const [allSeenApiKeys, setAllSeenApiKeys] = useState<Set<string>>(new Set());
+	const [allSeenClientIps, setAllSeenClientIps] = useState<Set<string>>(
+		new Set(),
+	);
 
 	// Update seen values whenever analytics data changes
 	useMemo(() => {
@@ -79,6 +83,18 @@ export const AnalyticsTab = React.memo(() => {
 				return updated;
 			});
 		}
+
+		// Add new client IPs
+		if (analytics.clientIpPerformance) {
+			const ips = analytics.clientIpPerformance;
+			setAllSeenClientIps((prev) => {
+				const updated = new Set(prev);
+				for (const entry of ips) {
+					updated.add(entry.ip);
+				}
+				return updated;
+			});
+		}
 	}, [analytics]);
 
 	// Convert sets to sorted arrays for filter dropdowns
@@ -94,6 +110,21 @@ export const AnalyticsTab = React.memo(() => {
 		() => Array.from(allSeenApiKeys).sort(),
 		[allSeenApiKeys],
 	);
+	const availableClientIps = useMemo(
+		() => Array.from(allSeenClientIps).sort(),
+		[allSeenClientIps],
+	);
+
+	// Build clientIpOptions with alias from latest analytics data
+	const clientIpOptions = useMemo(() => {
+		const aliasMap = new Map(
+			(analytics?.clientIpPerformance ?? []).map((p) => [p.ip, p.alias]),
+		);
+		return availableClientIps.map((ip) => ({
+			ip,
+			alias: aliasMap.get(ip),
+		}));
+	}, [availableClientIps, analytics?.clientIpPerformance]);
 
 	// Memoize filter function
 	const filterData = useCallback(
@@ -203,6 +234,7 @@ export const AnalyticsTab = React.memo(() => {
 		filters.accounts.length +
 		filters.models.length +
 		filters.apiKeys.length +
+		filters.clientIps.length +
 		(filters.status !== "all" ? 1 : 0);
 
 	return (
@@ -224,6 +256,8 @@ export const AnalyticsTab = React.memo(() => {
 				availableAccounts={availableAccounts}
 				availableModels={availableModels}
 				availableApiKeys={availableApiKeys}
+				availableClientIps={availableClientIps}
+				clientIpOptions={clientIpOptions}
 				activeFilterCount={activeFilterCount}
 				filterOpen={filterOpen}
 				setFilterOpen={setFilterOpen}

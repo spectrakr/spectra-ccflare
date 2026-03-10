@@ -32,6 +32,9 @@ export function createStatsHandler(dbOps: DatabaseOperations) {
 		// Get top models
 		const topModels = await statsRepository.getTopModels();
 
+		// Get top client IPs
+		const topClientIps = await statsRepository.getClientIpStats();
+
 		const response = {
 			totalRequests: stats.totalRequests,
 			successRate,
@@ -43,6 +46,7 @@ export function createStatsHandler(dbOps: DatabaseOperations) {
 			avgTokensPerSecond: stats.avgTokensPerSecond,
 			accounts: accountsWithStats,
 			recentErrors,
+			topClientIps,
 		};
 
 		return jsonResponse(response);

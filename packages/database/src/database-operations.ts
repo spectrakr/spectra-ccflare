@@ -11,6 +11,7 @@ import { resolveDbPath } from "./paths";
 import { AccountRepository } from "./repositories/account.repository";
 import { AgentPreferenceRepository } from "./repositories/agent-preference.repository";
 import { ApiKeyRepository } from "./repositories/api-key.repository";
+import { ClientIpAliasRepository } from "./repositories/client-ip-alias.repository";
 import { OAuthRepository } from "./repositories/oauth.repository";
 import {
 	type RequestData,
@@ -163,6 +164,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	private stats: StatsRepository;
 	private agentPreferences: AgentPreferenceRepository;
 	private apiKeys: ApiKeyRepository;
+	private clientIpAliases: ClientIpAliasRepository;
 
 	constructor(
 		dbPath?: string,
@@ -232,6 +234,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.stats = new StatsRepository(this.adapter);
 		this.agentPreferences = new AgentPreferenceRepository(this.adapter);
 		this.apiKeys = new ApiKeyRepository(this.adapter);
+		this.clientIpAliases = new ClientIpAliasRepository(this.adapter);
 	}
 
 	/**
@@ -456,6 +459,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		timestamp?: number,
 		apiKeyId?: string,
 		apiKeyName?: string,
+		clientIp?: string,
 	): Promise<void> {
 		await withDatabaseRetry(
 			() =>
@@ -468,6 +472,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 					timestamp,
 					apiKeyId,
 					apiKeyName,
+					clientIp,
 				),
 			this.retryConfig,
 			"saveRequestMeta",
@@ -488,6 +493,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		agentUsed?: string,
 		apiKeyId?: string,
 		apiKeyName?: string,
+		clientIp?: string,
 	): Promise<void> {
 		await withDatabaseRetry(
 			() =>
@@ -505,6 +511,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 					agentUsed,
 					apiKeyId,
 					apiKeyName,
+					clientIp,
 				}),
 			this.retryConfig,
 			"saveRequest",
@@ -926,5 +933,33 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	 */
 	getStatsRepository(): StatsRepository {
 		return this.stats;
+	}
+
+	/**
+	 * Get all client IP aliases
+	 */
+	getClientIpAliases() {
+		return this.clientIpAliases.getAll();
+	}
+
+	/**
+	 * Upsert a client IP alias
+	 */
+	upsertClientIpAlias(ip: string, alias: string) {
+		return this.clientIpAliases.upsert(ip, alias);
+	}
+
+	/**
+	 * Delete a client IP alias
+	 */
+	deleteClientIpAlias(ip: string) {
+		return this.clientIpAliases.delete(ip);
+	}
+
+	/**
+	 * Get the client IP alias repository for direct access
+	 */
+	getClientIpAliasRepository(): ClientIpAliasRepository {
+		return this.clientIpAliases;
 	}
 }

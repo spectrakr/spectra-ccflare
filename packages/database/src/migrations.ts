@@ -126,6 +126,16 @@ export function ensureSchema(db: Database): void {
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(is_active)`,
 	);
 
+	// Create client_ip_aliases table for user-defined labels for client IPs
+	db.run(`
+		CREATE TABLE IF NOT EXISTS client_ip_aliases (
+			ip TEXT PRIMARY KEY,
+			alias TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		)
+	`);
+
 	// Create model_translations table for mapping client model names to Bedrock model IDs
 	db.run(`
 		CREATE TABLE IF NOT EXISTS model_translations (
@@ -494,6 +504,12 @@ export function runMigrations(db: Database, dbPath?: string): void {
 		if (!requestsColumnNames.includes("api_key_name")) {
 			db.prepare("ALTER TABLE requests ADD COLUMN api_key_name TEXT").run();
 			log.info("Added api_key_name column to requests table");
+		}
+
+		// Add client_ip column if it doesn't exist
+		if (!requestsColumnNames.includes("client_ip")) {
+			db.prepare("ALTER TABLE requests ADD COLUMN client_ip TEXT").run();
+			log.info("Added client_ip column to requests table");
 		}
 
 		// Check columns in api_keys table

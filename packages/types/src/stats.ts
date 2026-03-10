@@ -28,6 +28,12 @@ export interface StatsWithAccounts extends Stats {
 		successRate: number;
 	}>;
 	recentErrors: string[];
+	topClientIps?: Array<{
+		ip: string;
+		alias?: string;
+		requests: number;
+		successRate: number;
+	}>;
 }
 
 // Analytics types
@@ -97,6 +103,12 @@ export interface AnalyticsResponse {
 		totalTokens?: number;
 	}>;
 	modelPerformance: ModelPerformance[];
+	clientIpPerformance?: Array<{
+		ip: string;
+		alias?: string;
+		requests: number;
+		successRate: number;
+	}>;
 }
 
 // Health check response

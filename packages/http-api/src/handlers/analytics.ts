@@ -70,6 +70,8 @@ export function createAnalyticsHandler(context: APIContext) {
 		const modelsFilter = params.get("models")?.split(",").filter(Boolean) || [];
 		const apiKeysFilter =
 			params.get("apiKeys")?.split(",").filter(Boolean) || [];
+		const clientIpsFilter =
+			params.get("clientIps")?.split(",").filter(Boolean) || [];
 		const statusFilter = params.get("status") || "all";
 
 		// Build filter conditions
@@ -101,6 +103,12 @@ export function createAnalyticsHandler(context: APIContext) {
 			const placeholders = apiKeysFilter.map(() => "?").join(",");
 			conditions.push(`api_key_name IN (${placeholders})`);
 			queryParams.push(...apiKeysFilter);
+		}
+
+		if (clientIpsFilter.length > 0) {
+			const placeholders = clientIpsFilter.map(() => "?").join(",");
+			conditions.push(`client_ip IN (${placeholders})`);
+			queryParams.push(...clientIpsFilter);
 		}
 
 		if (statusFilter === "success") {
@@ -551,6 +559,36 @@ export function createAnalyticsHandler(context: APIContext) {
 				});
 			}
 
+			// Get client IP performance (with alias join)
+			const clientIpPerfQuery = db.prepare(`
+				SELECT
+					r.client_ip as ip,
+					a.alias as alias,
+					COUNT(*) as requests,
+					SUM(CASE WHEN r.success = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as success_rate
+				FROM requests r
+				LEFT JOIN client_ip_aliases a ON a.ip = r.client_ip
+				WHERE ${whereClause}
+					AND r.client_ip IS NOT NULL
+				GROUP BY r.client_ip
+				ORDER BY requests DESC
+				LIMIT 20
+			`);
+			const clientIpPerfRows = clientIpPerfQuery.all(...queryParams) as Array<{
+				ip: string;
+				alias: string | null;
+				requests: number;
+				success_rate: number;
+			}>;
+			clientIpPerfQuery.finalize();
+
+			const clientIpPerformance = clientIpPerfRows.map((row) => ({
+				ip: row.ip,
+				...(row.alias ? { alias: row.alias } : {}),
+				requests: row.requests || 0,
+				successRate: Math.round(row.success_rate || 0),
+			}));
+
 			const response: AnalyticsResponse = {
 				meta: {
 					range,
@@ -580,6 +618,7 @@ export function createAnalyticsHandler(context: APIContext) {
 				apiKeyPerformance,
 				costByModel,
 				modelPerformance,
+				clientIpPerformance,
 			};
 
 			return jsonResponse(response);

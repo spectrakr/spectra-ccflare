@@ -23,6 +23,7 @@ export interface RequestRow {
 	output_tokens_per_second: number | null;
 	api_key_id: string | null;
 	api_key_name: string | null;
+	client_ip: string | null;
 }
 
 // Domain model
@@ -50,6 +51,7 @@ export interface Request {
 	tokensPerSecond?: number;
 	apiKeyId?: string;
 	apiKeyName?: string;
+	clientIp?: string;
 }
 
 // API response type
@@ -77,6 +79,7 @@ export interface RequestResponse {
 	tokensPerSecond?: number;
 	apiKeyId?: string;
 	apiKeyName?: string;
+	clientIp?: string;
 }
 
 // Detailed request with payload
@@ -138,6 +141,7 @@ export function toRequest(row: RequestRow): Request {
 		tokensPerSecond: row.output_tokens_per_second || undefined,
 		apiKeyId: row.api_key_id || undefined,
 		apiKeyName: row.api_key_name || undefined,
+		clientIp: row.client_ip || undefined,
 	};
 }
 
@@ -166,6 +170,7 @@ export function toRequestResponse(request: Request): RequestResponse {
 		tokensPerSecond: request.tokensPerSecond,
 		apiKeyId: request.apiKeyId,
 		apiKeyName: request.apiKeyName,
+		clientIp: request.clientIp,
 	};
 }
 

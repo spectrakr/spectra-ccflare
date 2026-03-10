@@ -16,7 +16,13 @@ export interface FilterState {
 	accounts: string[];
 	models: string[];
 	apiKeys: string[];
+	clientIps: string[];
 	status: "all" | "success" | "error";
+}
+
+export interface ClientIpOption {
+	ip: string;
+	alias?: string;
 }
 
 interface AnalyticsFiltersProps {
@@ -25,6 +31,8 @@ interface AnalyticsFiltersProps {
 	availableAccounts: string[];
 	availableModels: string[];
 	availableApiKeys: string[];
+	availableClientIps: string[];
+	clientIpOptions?: ClientIpOption[];
 	activeFilterCount: number;
 	filterOpen: boolean;
 	setFilterOpen: (open: boolean) => void;
@@ -36,10 +44,16 @@ export function AnalyticsFilters({
 	availableAccounts,
 	availableModels,
 	availableApiKeys,
+	availableClientIps,
+	clientIpOptions,
 	activeFilterCount,
 	filterOpen,
 	setFilterOpen,
 }: AnalyticsFiltersProps) {
+	// Build alias lookup from clientIpOptions
+	const aliasMap = new Map(
+		(clientIpOptions ?? []).map((opt) => [opt.ip, opt.alias]),
+	);
 	return (
 		<Popover open={filterOpen} onOpenChange={setFilterOpen}>
 			<PopoverTrigger asChild>
@@ -66,6 +80,7 @@ export function AnalyticsFilters({
 										accounts: [],
 										models: [],
 										apiKeys: [],
+										clientIps: [],
 										status: "all",
 									})
 								}
@@ -205,6 +220,51 @@ export function AnalyticsFilters({
 										<span className="text-sm truncate">{apiKey}</span>
 									</label>
 								))}
+							</div>
+						</div>
+					)}
+
+					{/* Client IP Filter */}
+					{availableClientIps.length > 0 && (
+						<div className="space-y-2">
+							<Label>Client IPs ({filters.clientIps.length} selected)</Label>
+							<div className="border rounded-md p-2 max-h-32 overflow-y-auto space-y-1">
+								{availableClientIps.map((ip) => {
+									const alias = aliasMap.get(ip);
+									return (
+										<label
+											key={ip}
+											className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-1 rounded"
+										>
+											<input
+												type="checkbox"
+												className="rounded border-gray-300"
+												checked={filters.clientIps.includes(ip)}
+												onChange={(e) => {
+													if (e.target.checked) {
+														setFilters({
+															...filters,
+															clientIps: [...filters.clientIps, ip],
+														});
+													} else {
+														setFilters({
+															...filters,
+															clientIps: filters.clientIps.filter(
+																(i) => i !== ip,
+															),
+														});
+													}
+												}}
+											/>
+											<span
+												className="text-sm font-mono truncate"
+												title={alias ? ip : undefined}
+											>
+												{alias ?? ip}
+											</span>
+										</label>
+									);
+								})}
 							</div>
 						</div>
 					)}

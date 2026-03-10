@@ -30,6 +30,9 @@ export interface StartMessage {
 	apiKeyId: string | null;
 	apiKeyName: string | null;
 
+	// Client IP
+	clientIp: string | null;
+
 	// Retry info
 	retryAttempt: number;
 	failoverAttempts: number;

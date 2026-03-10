@@ -42,6 +42,11 @@ import {
 	createApiKeysStatsHandler,
 	createApiKeyUpdateRoleHandler,
 } from "./handlers/api-keys";
+import {
+	createClientIpAliasDeleteHandler,
+	createClientIpAliasesListHandler,
+	createClientIpAliasUpsertHandler,
+} from "./handlers/client-ip-aliases";
 import { createConfigHandlers } from "./handlers/config";
 import { createHealthHandler } from "./handlers/health";
 import { createLogsStreamHandler } from "./handlers/logs";
@@ -251,6 +256,12 @@ export class APIRouter {
 			apiKeysGenerateHandler(req),
 		);
 		this.handlers.set("GET:/api/api-keys/stats", () => apiKeysStatsHandler());
+
+		// Client IP alias routes
+		const clientIpAliasesListHandler = createClientIpAliasesListHandler(dbOps);
+		this.handlers.set("GET:/api/client-ip-aliases", () =>
+			clientIpAliasesListHandler(),
+		);
 	}
 
 	/**
@@ -501,6 +512,31 @@ export class APIRouter {
 			if (parts.length === 4 && method === "DELETE") {
 				const deleteHandler = createApiKeyDeleteHandler(this.context.dbOps);
 				return await this.wrapHandler((req) => deleteHandler(req, keyIdOrName))(
+					req,
+					url,
+				);
+			}
+		}
+
+		// Check for dynamic client IP alias endpoints
+		if (path.startsWith("/api/client-ip-aliases/")) {
+			const ip = path.slice("/api/client-ip-aliases/".length);
+
+			if (method === "PUT") {
+				const upsertHandler = createClientIpAliasUpsertHandler(
+					this.context.dbOps,
+				);
+				return await this.wrapHandler((req) => upsertHandler(req, ip))(
+					req,
+					url,
+				);
+			}
+
+			if (method === "DELETE") {
+				const deleteHandler = createClientIpAliasDeleteHandler(
+					this.context.dbOps,
+				);
+				return await this.wrapHandler((req) => deleteHandler(req, ip))(
 					req,
 					url,
 				);

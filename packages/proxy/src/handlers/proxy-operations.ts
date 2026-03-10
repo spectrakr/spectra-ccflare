@@ -261,6 +261,7 @@ export async function proxyUnauthenticated(
 				agentUsed: requestMeta.agentUsed,
 				apiKeyId,
 				apiKeyName,
+				clientIp: requestMeta.clientIp,
 			},
 			ctx,
 		);
@@ -428,6 +429,7 @@ export async function proxyWithAccount(
 				agentUsed: requestMeta.agentUsed,
 				apiKeyId,
 				apiKeyName,
+				clientIp: requestMeta.clientIp,
 			},
 			{ ...ctx, provider },
 		);

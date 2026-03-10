@@ -8,7 +8,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../ui/select";
-import { AnalyticsFilters, type FilterState } from "./AnalyticsFilters";
+import {
+	AnalyticsFilters,
+	type ClientIpOption,
+	type FilterState,
+} from "./AnalyticsFilters";
 
 interface AnalyticsControlsProps {
 	timeRange: TimeRange;
@@ -20,6 +24,8 @@ interface AnalyticsControlsProps {
 	availableAccounts: string[];
 	availableModels: string[];
 	availableApiKeys: string[];
+	availableClientIps: string[];
+	clientIpOptions?: ClientIpOption[];
 	activeFilterCount: number;
 	filterOpen: boolean;
 	setFilterOpen: (open: boolean) => void;
@@ -37,6 +43,8 @@ export function AnalyticsControls({
 	availableAccounts,
 	availableModels,
 	availableApiKeys,
+	availableClientIps,
+	clientIpOptions,
 	activeFilterCount,
 	filterOpen,
 	setFilterOpen,
@@ -69,6 +77,8 @@ export function AnalyticsControls({
 					availableAccounts={availableAccounts}
 					availableModels={availableModels}
 					availableApiKeys={availableApiKeys}
+					availableClientIps={availableClientIps}
+					clientIpOptions={clientIpOptions}
 					activeFilterCount={activeFilterCount}
 					filterOpen={filterOpen}
 					setFilterOpen={setFilterOpen}

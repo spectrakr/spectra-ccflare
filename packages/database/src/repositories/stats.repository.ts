@@ -227,6 +227,67 @@ export class StatsRepository {
 	}
 
 	/**
+	 * Get top client IPs by request count (with optional alias join)
+	 */
+	async getClientIpStats(
+		limit = 10,
+	): Promise<
+		Array<{ ip: string; alias?: string; requests: number; successRate: number }>
+	> {
+		const ipStats = await this.adapter.query<{
+			ip: string;
+			alias: string | null;
+			requests: number;
+		}>(
+			`SELECT
+				r.client_ip as ip,
+				a.alias as alias,
+				COUNT(*) as requests
+			FROM requests r
+			LEFT JOIN client_ip_aliases a ON a.ip = r.client_ip
+			WHERE r.client_ip IS NOT NULL
+			GROUP BY r.client_ip
+			ORDER BY requests DESC
+			LIMIT ?`,
+			[limit],
+		);
+
+		if (ipStats.length === 0) return [];
+
+		const ips = ipStats.map((s) => s.ip);
+		const placeholders = ips.map(() => "?").join(",");
+
+		const successRates = await this.adapter.query<{
+			ip: string;
+			total: number;
+			successful: number;
+		}>(
+			`SELECT
+				client_ip as ip,
+				COUNT(*) as total,
+				SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful
+			FROM requests
+			WHERE client_ip IN (${placeholders})
+			GROUP BY client_ip`,
+			ips,
+		);
+
+		const successRateMap = new Map(
+			successRates.map((sr) => [
+				sr.ip,
+				sr.total > 0 ? Math.round((sr.successful / sr.total) * 100) : 0,
+			]),
+		);
+
+		return ipStats.map((s) => ({
+			ip: s.ip,
+			...(s.alias ? { alias: s.alias } : {}),
+			requests: s.requests,
+			successRate: successRateMap.get(s.ip) || 0,
+		}));
+	}
+
+	/**
 	 * Get API key statistics with success rates
 	 */
 	async getApiKeyStats(): Promise<

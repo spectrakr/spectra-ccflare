@@ -710,8 +710,10 @@ export default async function startServer(options?: {
 						},
 					}
 				: {}),
-			async fetch(req: Request) {
+			async fetch(req: Request, server: import("bun").Server<undefined>) {
 				const url = new URL(req.url);
+				const clientAddr = server.requestIP(req);
+				const clientIp = clientAddr?.address || null;
 
 				// Try API routes first
 				const apiResponse = await apiRouter.handleRequest(url, req);
@@ -796,6 +798,7 @@ export default async function startServer(options?: {
 							proxyContext,
 							authResult.apiKeyId,
 							authResult.apiKeyName,
+							clientIp,
 						);
 					} catch (proxyError) {
 						const statusCode =

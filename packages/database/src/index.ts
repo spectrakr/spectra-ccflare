@@ -21,6 +21,8 @@ export type {
 } from "./repositories/model-translation.repository";
 
 // Re-export repository classes
+export { ClientIpAliasRepository } from "./repositories/client-ip-alias.repository";
+export type { ClientIpAlias } from "./repositories/client-ip-alias.repository";
 export { ModelTranslationRepository } from "./repositories/model-translation.repository";
 // Re-export repository types
 export type { StatsRepository } from "./repositories/stats.repository";

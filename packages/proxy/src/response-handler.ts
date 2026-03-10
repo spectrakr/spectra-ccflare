@@ -51,6 +51,7 @@ export interface ResponseHandlerOptions {
 	agentUsed?: string | null;
 	apiKeyId?: string | null;
 	apiKeyName?: string | null;
+	clientIp?: string | null;
 }
 
 /**
@@ -76,6 +77,7 @@ export async function forwardToClient(
 		agentUsed,
 		apiKeyId,
 		apiKeyName,
+		clientIp,
 	} = options;
 
 	// Always strip compression headers *before* we do anything else
@@ -115,6 +117,7 @@ export async function forwardToClient(
 			agentUsed: agentUsed || null,
 			apiKeyId: apiKeyId || null,
 			apiKeyName: apiKeyName || null,
+			clientIp: clientIp || null,
 			retryAttempt,
 			failoverAttempts,
 		};
