@@ -27,6 +27,11 @@ export interface ExtraUsage {
 	utilization: number | null;
 }
 
+export interface UsageFetchResult {
+	data: UsageData | null;
+	retryAfterMs?: number; // Set when rate-limited (429)
+}
+
 export interface UsageData {
 	// Core windows (always present in older API versions)
 	five_hour: UsageWindow;
@@ -53,7 +58,7 @@ export type AnyUsageData =
  */
 export async function fetchUsageData(
 	accessToken: string,
-): Promise<UsageData | null> {
+): Promise<UsageFetchResult> {
 	try {
 		const response = await fetch("https://api.anthropic.com/api/oauth/usage", {
 			method: "GET",
@@ -68,6 +73,19 @@ export async function fetchUsageData(
 		if (!response.ok) {
 			const errorMessage = response.statusText;
 			const responseHeaders = Object.fromEntries(response.headers.entries());
+
+			// Handle rate limiting: respect Retry-After header if present
+			if (response.status === 429) {
+				const retryAfter = response.headers.get("retry-after");
+				const retryAfterMs = retryAfter
+					? Number(retryAfter) * 1000
+					: 5 * 60 * 1000; // default 5 min if no header
+				log.warn(
+					`Failed to fetch usage data: 429 Too Many Requests. Retry after ${Math.round(retryAfterMs / 1000)}s`,
+				);
+				return { data: null, retryAfterMs };
+			}
+
 			try {
 				const errorBody = await response.text();
 				log.error(
@@ -93,11 +111,11 @@ export async function fetchUsageData(
 					},
 				);
 			}
-			return null;
+			return { data: null };
 		}
 
 		const data = (await response.json()) as UsageData;
-		return data;
+		return { data };
 	} catch (error) {
 		// Ensure we have a proper error object for logging
 		const errorMessage =
@@ -108,7 +126,7 @@ export async function fetchUsageData(
 					: String(error);
 
 		log.error("Error fetching usage data:", errorMessage || "Unknown error");
-		return null;
+		return { data: null };
 	}
 }
 
@@ -218,17 +236,21 @@ class UsageCache {
 		baseIntervalMs: number,
 		provider?: string,
 		customEndpoint?: string | null,
+		overrideDelayMs?: number,
 	) {
 		const failures = this.failureCounts.get(accountId) ?? 0;
-		// Exponential backoff capped at 30 minutes
+		// Use override delay (e.g. from Retry-After header) if provided,
+		// otherwise exponential backoff capped at 30 minutes
 		const delay =
-			failures === 0
-				? baseIntervalMs
-				: Math.min(baseIntervalMs * 2 ** failures, 30 * 60 * 1000);
+			overrideDelayMs !== undefined
+				? overrideDelayMs
+				: failures === 0
+					? baseIntervalMs
+					: Math.min(baseIntervalMs * 2 ** failures, 30 * 60 * 1000);
 
-		if (failures > 0) {
+		if (failures > 0 || overrideDelayMs !== undefined) {
 			log.info(
-				`Usage poll backoff for account ${accountId}: retry in ${Math.round(delay / 1000)}s (${failures} consecutive failure(s))`,
+				`Usage poll backoff for account ${accountId}: retry in ${Math.round(delay / 1000)}s${overrideDelayMs !== undefined ? " (rate-limited)" : ` (${failures} consecutive failure(s))`}`,
 			);
 		}
 
@@ -237,7 +259,7 @@ class UsageCache {
 			// Bail if polling was stopped
 			if (!this.tokenProviders.has(accountId)) return;
 
-			const success = await this.fetchAndCache(
+			const { success, retryAfterMs } = await this.fetchAndCache(
 				accountId,
 				tokenProvider,
 				provider,
@@ -245,7 +267,8 @@ class UsageCache {
 			);
 			if (success) {
 				this.failureCounts.delete(accountId); // reset streak on success
-			} else {
+			} else if (retryAfterMs === undefined) {
+				// Only increment failure count for non-rate-limit errors
 				const count = (this.failureCounts.get(accountId) ?? 0) + 1;
 				this.failureCounts.set(accountId, count);
 			}
@@ -257,6 +280,7 @@ class UsageCache {
 					baseIntervalMs,
 					provider,
 					customEndpoint,
+					retryAfterMs,
 				);
 			}
 		}, delay);
@@ -314,8 +338,8 @@ class UsageCache {
 
 		// Immediate fetch
 		this.fetchAndCache(accountId, tokenProvider, provider, customEndpoint).then(
-			(success) => {
-				if (!success) {
+			({ success, retryAfterMs }) => {
+				if (!success && retryAfterMs === undefined) {
 					this.failureCounts.set(accountId, 1);
 				}
 				if (this.tokenProviders.has(accountId)) {
@@ -325,6 +349,7 @@ class UsageCache {
 						baseIntervalMs,
 						provider,
 						customEndpoint,
+						retryAfterMs,
 					);
 				}
 			},
@@ -347,12 +372,13 @@ class UsageCache {
 
 		const provider = this.providerTypes.get(accountId);
 		const customEndpoint = this.customEndpoints.get(accountId);
-		return await this.fetchAndCache(
+		const { success } = await this.fetchAndCache(
 			accountId,
 			tokenProvider,
 			provider,
 			customEndpoint,
 		);
+		return success;
 	}
 
 	/**
@@ -377,14 +403,14 @@ class UsageCache {
 
 	/**
 	 * Fetch and cache usage data.
-	 * Returns true if data was successfully fetched and cached, false otherwise.
+	 * Returns { success, retryAfterMs? } where retryAfterMs is set when rate-limited.
 	 */
 	private async fetchAndCache(
 		accountId: string,
 		tokenProvider: AccessTokenProvider,
 		provider?: string,
 		customEndpoint?: string | null,
-	): Promise<boolean> {
+	): Promise<{ success: boolean; retryAfterMs?: number }> {
 		try {
 			// Get a fresh access token or API key on each fetch
 			let token: string;
@@ -402,7 +428,7 @@ class UsageCache {
 				log.warn(
 					`Token provider failed for account ${accountId}: ${tokenErrorMessage || "Unknown error"}`,
 				);
-				return false;
+				return { success: false };
 			}
 
 			// Validate token before proceeding
@@ -410,7 +436,7 @@ class UsageCache {
 				log.warn(
 					`No valid token available for account ${accountId}, skipping usage fetch`,
 				);
-				return false;
+				return { success: false };
 			}
 
 			// Fetch data based on provider type
@@ -436,7 +462,7 @@ class UsageCache {
 					log.debug(
 						`Successfully fetched NanoGPT usage data for account ${accountId}: ${utilization}% (${window} window)`,
 					);
-					return true;
+					return { success: true };
 				}
 			} else if (provider === "zai") {
 				// Fetch Zai usage data
@@ -456,7 +482,7 @@ class UsageCache {
 					log.debug(
 						`Successfully fetched Zai usage data for account ${accountId}: ${utilization}% (${window} window)`,
 					);
-					return true;
+					return { success: true };
 				}
 			} else if (provider === "kilo") {
 				// Fetch Kilo usage data
@@ -470,23 +496,29 @@ class UsageCache {
 					log.debug(
 						`Successfully fetched Kilo usage data for account ${accountId}: $${(data as KiloUsageData).remainingUsd.toFixed(2)} remaining (${utilization?.toFixed(1)}% used, ${window})`,
 					);
-					return true;
+					return { success: true };
 				}
 			} else {
 				// Default to Anthropic usage data
-				data = await fetchUsageData(token);
-				if (data) {
-					this.cache.set(accountId, { data, timestamp: Date.now() });
-					const utilization = getRepresentativeUtilization(data as UsageData);
-					const window = getRepresentativeWindow(data as UsageData);
+				const result = await fetchUsageData(token);
+				if (result.retryAfterMs !== undefined) {
+					return { success: false, retryAfterMs: result.retryAfterMs };
+				}
+				if (result.data) {
+					this.cache.set(accountId, {
+						data: result.data,
+						timestamp: Date.now(),
+					});
+					const utilization = getRepresentativeUtilization(result.data);
+					const window = getRepresentativeWindow(result.data);
 					log.debug(
 						`Successfully fetched usage data for account ${accountId}: ${utilization}% (${window} window)`,
 					);
-					return true;
+					return { success: true };
 				}
 			}
 
-			return false;
+			return { success: false };
 		} catch (error) {
 			// Ensure we have a proper error object for logging
 			const errorMessage =
@@ -500,7 +532,7 @@ class UsageCache {
 				`Error fetching usage data for account ${accountId}:`,
 				errorMessage || "Unknown error",
 			);
-			return false;
+			return { success: false };
 		}
 	}
 

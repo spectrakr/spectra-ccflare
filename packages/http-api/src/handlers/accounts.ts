@@ -140,7 +140,9 @@ export function createAccountsListHandler(db: Database) {
 				if (!isCacheFresh && account.access_token) {
 					// Fetch usage data if cache is stale or missing
 					try {
-						const usageData = await fetchUsageData(account.access_token);
+						const { data: usageData } = await fetchUsageData(
+							account.access_token,
+						);
 						if (usageData) {
 							// Update the cache using the public set method
 							usageCache.set(account.id, usageData);
@@ -1979,7 +1981,7 @@ export function createAccountForceResetRateLimitHandler(
 				account.provider === "anthropic" &&
 				account.access_token
 			) {
-				const usageData = await fetchUsageData(account.access_token);
+				const { data: usageData } = await fetchUsageData(account.access_token);
 				if (usageData) {
 					usageCache.set(account.id, usageData);
 					usagePollTriggered = true;
