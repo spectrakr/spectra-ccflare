@@ -33,6 +33,8 @@ export interface StatsWithAccounts extends Stats {
 		alias?: string;
 		requests: number;
 		successRate: number;
+		totalTokens: number;
+		totalCost: number;
 	}>;
 }
 
@@ -108,6 +110,8 @@ export interface AnalyticsResponse {
 		alias?: string;
 		requests: number;
 		successRate: number;
+		totalTokens: number;
+		totalCost: number;
 	}>;
 }
 

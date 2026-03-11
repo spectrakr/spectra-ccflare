@@ -565,7 +565,9 @@ export function createAnalyticsHandler(context: APIContext) {
 					r.client_ip as ip,
 					a.alias as alias,
 					COUNT(*) as requests,
-					SUM(CASE WHEN r.success = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as success_rate
+					SUM(CASE WHEN r.success = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as success_rate,
+					SUM(COALESCE(r.total_tokens, 0)) as total_tokens,
+					SUM(COALESCE(r.cost_usd, 0)) as cost_usd
 				FROM requests r
 				LEFT JOIN client_ip_aliases a ON a.ip = r.client_ip
 				WHERE ${whereClause}
@@ -579,6 +581,8 @@ export function createAnalyticsHandler(context: APIContext) {
 				alias: string | null;
 				requests: number;
 				success_rate: number;
+				total_tokens: number;
+				cost_usd: number;
 			}>;
 			clientIpPerfQuery.finalize();
 
@@ -587,6 +591,8 @@ export function createAnalyticsHandler(context: APIContext) {
 				...(row.alias ? { alias: row.alias } : {}),
 				requests: row.requests || 0,
 				successRate: Math.round(row.success_rate || 0),
+				totalTokens: row.total_tokens || 0,
+				totalCost: row.cost_usd || 0,
 			}));
 
 			const response: AnalyticsResponse = {

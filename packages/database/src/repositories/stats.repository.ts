@@ -232,17 +232,32 @@ export class StatsRepository {
 	async getClientIpStats(
 		limit = 10,
 	): Promise<
-		Array<{ ip: string; alias?: string; requests: number; successRate: number }>
+		Array<{
+			ip: string;
+			alias?: string;
+			requests: number;
+			successRate: number;
+			totalTokens: number;
+			totalCost: number;
+		}>
 	> {
 		const ipStats = await this.adapter.query<{
 			ip: string;
 			alias: string | null;
 			requests: number;
+			total_tokens: number;
+			cost_usd: number;
+			total: number;
+			successful: number;
 		}>(
 			`SELECT
 				r.client_ip as ip,
 				a.alias as alias,
-				COUNT(*) as requests
+				COUNT(*) as requests,
+				SUM(COALESCE(r.total_tokens, 0)) as total_tokens,
+				SUM(COALESCE(r.cost_usd, 0)) as cost_usd,
+				COUNT(*) as total,
+				SUM(CASE WHEN r.success = 1 THEN 1 ELSE 0 END) as successful
 			FROM requests r
 			LEFT JOIN client_ip_aliases a ON a.ip = r.client_ip
 			WHERE r.client_ip IS NOT NULL
@@ -254,36 +269,13 @@ export class StatsRepository {
 
 		if (ipStats.length === 0) return [];
 
-		const ips = ipStats.map((s) => s.ip);
-		const placeholders = ips.map(() => "?").join(",");
-
-		const successRates = await this.adapter.query<{
-			ip: string;
-			total: number;
-			successful: number;
-		}>(
-			`SELECT
-				client_ip as ip,
-				COUNT(*) as total,
-				SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful
-			FROM requests
-			WHERE client_ip IN (${placeholders})
-			GROUP BY client_ip`,
-			ips,
-		);
-
-		const successRateMap = new Map(
-			successRates.map((sr) => [
-				sr.ip,
-				sr.total > 0 ? Math.round((sr.successful / sr.total) * 100) : 0,
-			]),
-		);
-
 		return ipStats.map((s) => ({
 			ip: s.ip,
 			...(s.alias ? { alias: s.alias } : {}),
 			requests: s.requests,
-			successRate: successRateMap.get(s.ip) || 0,
+			successRate: s.total > 0 ? Math.round((s.successful / s.total) * 100) : 0,
+			totalTokens: s.total_tokens || 0,
+			totalCost: s.cost_usd || 0,
 		}));
 	}
 
