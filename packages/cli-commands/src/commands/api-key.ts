@@ -32,15 +32,6 @@ export async function generateApiKey(
 		throw new Error(`API key with name '${trimmedName}' already exists`);
 	}
 
-	// Prevent creating api-only key when no other keys exist (would lock user out of dashboard)
-	if (role === "api-only" && (await dbOps.countActiveApiKeys()) === 0) {
-		throw new Error(
-			"Cannot create an API-only key as your first key. " +
-				"API-only keys cannot access the dashboard, which would lock you out. " +
-				"Please create an Admin key first using: --role admin",
-		);
-	}
-
 	// Generate API key
 	const crypto = new NodeCryptoUtils();
 	const apiKey = await crypto.generateApiKey();

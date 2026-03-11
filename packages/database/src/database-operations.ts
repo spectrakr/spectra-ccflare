@@ -902,6 +902,14 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		);
 	}
 
+	async countActiveAdminApiKeys(): Promise<number> {
+		return withDatabaseRetry(
+			() => this.apiKeys.countActiveAdmin(),
+			this.retryConfig,
+			"countActiveAdminApiKeys",
+		);
+	}
+
 	async countAllApiKeys(): Promise<number> {
 		return withDatabaseRetry(
 			() => this.apiKeys.countAll(),

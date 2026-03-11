@@ -217,6 +217,19 @@ export class ApiKeyRepository extends BaseRepository<ApiKey> {
 	}
 
 	/**
+	 * Count the number of active admin API keys
+	 */
+	async countActiveAdmin(): Promise<number> {
+		const row = await this.get<{ count: number }>(`
+			SELECT COUNT(*) as count
+			FROM api_keys
+			WHERE is_active = 1 AND role = 'admin'
+		`);
+
+		return row?.count || 0;
+	}
+
+	/**
 	 * Count the total number of API keys (active and inactive)
 	 */
 	async countAll(): Promise<number> {

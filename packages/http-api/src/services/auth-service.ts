@@ -31,6 +31,15 @@ export class AuthService {
 	}
 
 	/**
+	 * Check if dashboard authentication is enabled (has at least one active admin API key)
+	 * Dashboard is only protected when admin keys exist.
+	 * If only api-only keys exist, dashboard remains open while proxy is protected.
+	 */
+	async isDashboardAuthEnabled(): Promise<boolean> {
+		return (await this.dbOps.countActiveAdminApiKeys()) > 0;
+	}
+
+	/**
 	 * Validate API key from request header
 	 */
 	async validateApiKey(apiKey: string): Promise<AuthenticationResult> {
@@ -165,25 +174,20 @@ export class AuthService {
 			return true;
 		}
 
-		// API key management: Only allow initial key creation without auth if no keys exist
-		// All other operations require authentication
-		if (path.startsWith("/api/api-keys")) {
-			// Only allow POST (key creation) without auth if no keys exist
-			if (path === "/api/api-keys" && method === "POST") {
-				return !(await this.isAuthenticationEnabled()); // Only exempt if no keys exist
-			}
-			// All other API key operations require authentication
-			return false;
-		}
-
-		// Proxy endpoints (/v1/*, /messages/*, etc.) require authentication if enabled
+		// Proxy endpoints (/v1/*, /messages/*) require auth if any active key exists
 		if (path.startsWith("/v1") || path.startsWith("/messages")) {
 			return false;
 		}
 
-		// API endpoints require authentication if enabled
+		// Dashboard/API endpoints: only require auth if admin keys exist.
+		// If only api-only keys exist, the proxy is protected but dashboard stays open.
 		if (path.startsWith("/api")) {
-			return false;
+			// API key creation: allow without auth if no admin keys exist
+			if (path === "/api/api-keys" && method === "POST") {
+				return !(await this.isDashboardAuthEnabled());
+			}
+			// All other dashboard endpoints: exempt if no admin keys
+			return !(await this.isDashboardAuthEnabled());
 		}
 
 		return false;

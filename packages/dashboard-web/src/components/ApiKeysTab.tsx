@@ -83,6 +83,7 @@ export function ApiKeysTab() {
 	const [selectedKey, setSelectedKey] = useState<ApiKey | null>(null);
 	const [generatedKey, setGeneratedKey] = useState<string | null>(null);
 	const [isAdminKey, setIsAdminKey] = useState(false);
+	const [generateError, setGenerateError] = useState<string | null>(null);
 
 	const queryClient = useQueryClient();
 
@@ -96,10 +97,10 @@ export function ApiKeysTab() {
 			enabled: !generatedKey, // Don't fetch while showing generated key
 		});
 
-	// Default to admin if this is the first key, otherwise api-only
+	// Default to admin if this is the first key
 	useEffect(() => {
-		if (statsResponse?.data) {
-			setIsAdminKey(statsResponse.data.active === 0);
+		if (statsResponse?.data && statsResponse.data.active === 0) {
+			setIsAdminKey(true);
 		}
 	}, [statsResponse]);
 
@@ -130,6 +131,7 @@ export function ApiKeysTab() {
 		},
 		onSuccess: (data) => {
 			setGeneratedKey(data.apiKey);
+			setGenerateError(null);
 			setNewKeyName("");
 			setIsAdminKey(false);
 			setIsCreateDialogOpen(false);
@@ -138,6 +140,7 @@ export function ApiKeysTab() {
 		},
 		onError: (error: Error) => {
 			console.error("Failed to generate API key:", error);
+			setGenerateError(error.message);
 		},
 	});
 
@@ -310,7 +313,13 @@ export function ApiKeysTab() {
 						all API requests must include a valid API key.
 					</p>
 				</div>
-				<Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+				<Dialog
+					open={isCreateDialogOpen}
+					onOpenChange={(open) => {
+						setIsCreateDialogOpen(open);
+						if (!open) setGenerateError(null);
+					}}
+				>
 					<DialogTrigger asChild>
 						<Button>
 							<Plus className="h-4 w-4 mr-2" />
@@ -358,6 +367,14 @@ export function ApiKeysTab() {
 											Admin keys can manage accounts, view analytics, and modify
 											settings.
 										</span>
+									</div>
+								</div>
+							)}
+							{generateError && (
+								<div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+									<div className="flex items-center gap-2 text-red-800">
+										<AlertTriangle className="h-4 w-4" />
+										<span className="text-sm">{generateError}</span>
 									</div>
 								</div>
 							)}
