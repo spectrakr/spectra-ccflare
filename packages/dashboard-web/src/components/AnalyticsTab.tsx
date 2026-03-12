@@ -14,16 +14,23 @@ import {
 	TokenUsageBreakdown,
 } from "./analytics";
 
-// Returns today's date as YYYY-MM-DD string
-function todayStr() {
-	return new Date().toISOString().slice(0, 10);
+function toDateStr(d: Date): string {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
 }
 
-// Returns date N days ago as YYYY-MM-DD string
+// Returns today's date as YYYY-MM-DD string (local time)
+function todayStr() {
+	return toDateStr(new Date());
+}
+
+// Returns date N days ago as YYYY-MM-DD string (local time)
 function daysAgoStr(days: number) {
 	const d = new Date();
 	d.setDate(d.getDate() - days);
-	return d.toISOString().slice(0, 10);
+	return toDateStr(d);
 }
 
 export const AnalyticsTab = React.memo(() => {
@@ -45,7 +52,9 @@ export const AnalyticsTab = React.memo(() => {
 	// Build custom date range as milliseconds when timeRange === "custom"
 	const customDateRange = useMemo(() => {
 		if (timeRange !== "custom") return undefined;
-		const start = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : null;
+		const start = customStartDate
+			? new Date(`${customStartDate}T00:00:00`).getTime()
+			: null;
 		// End date: end of day
 		const end = customEndDate
 			? new Date(`${customEndDate}T23:59:59`).getTime()

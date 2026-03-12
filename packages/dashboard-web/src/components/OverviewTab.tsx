@@ -35,6 +35,13 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
+function localDateStr(d = new Date()): string {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
 export const OverviewTab = React.memo(() => {
 	// Inline edit state for client IP aliases
 	const [editingIp, setEditingIp] = useState<string | null>(null);
@@ -66,16 +73,14 @@ export const OverviewTab = React.memo(() => {
 		REFRESH_INTERVALS.default,
 	);
 	const [timeRange, setTimeRange] = useState("custom");
-	const [customStartDate, setCustomStartDate] = useState(
-		new Date().toISOString().slice(0, 10),
-	);
-	const [customEndDate, setCustomEndDate] = useState(
-		new Date().toISOString().slice(0, 10),
-	);
+	const [customStartDate, setCustomStartDate] = useState(localDateStr());
+	const [customEndDate, setCustomEndDate] = useState(localDateStr());
 
 	const customDateRange = useMemo(() => {
 		if (timeRange !== "custom") return undefined;
-		const start = customStartDate ? new Date(`${customStartDate}T00:00:00`).getTime() : null;
+		const start = customStartDate
+			? new Date(`${customStartDate}T00:00:00`).getTime()
+			: null;
 		const end = customEndDate
 			? new Date(`${customEndDate}T23:59:59`).getTime()
 			: Date.now();
