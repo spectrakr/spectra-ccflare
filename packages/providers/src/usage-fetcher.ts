@@ -93,7 +93,7 @@ async function fetchUsageDataWithResult(
 
 			if (response.status === 429) {
 				log.warn(
-					`Usage data rate limited (429): retry after ${Math.round(retryAfterMs / 1000)}s`,
+					`Usage data rate limited (429)${retryAfterHeader ? ` (Retry-After header: ${retryAfterHeader})` : ""}`,
 				);
 				return { data: null, retryAfterMs };
 			}
