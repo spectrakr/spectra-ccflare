@@ -377,100 +377,108 @@ export const OverviewTab = React.memo(() => {
 								</thead>
 								<tbody>
 									{(() => {
-										const totalRequests = analytics.clientIpPerformance.reduce((sum, e) => sum + e.requests, 0);
+										const totalRequests = analytics.clientIpPerformance.reduce(
+											(sum, e) => sum + e.requests,
+											0,
+										);
 										return analytics.clientIpPerformance.map((entry, idx) => (
-										<tr
-											key={entry.ip}
-											className="border-b last:border-0 hover:bg-muted/20"
-										>
-											<td className="px-4 py-2 text-muted-foreground">
-												{idx + 1}
-											</td>
-											<td className="px-4 py-2">
-												{editingIp === entry.ip ? (
-													<div className="flex items-center gap-1">
-														<input
-															type="text"
-															value={editAlias}
-															onChange={(e) => setEditAlias(e.target.value)}
-															onKeyDown={(e) => {
-																if (e.key === "Enter")
-																	handleAliasSave(entry.ip);
-																if (e.key === "Escape") setEditingIp(null);
-															}}
-															placeholder="별칭 입력..."
-															className="h-6 text-xs border rounded px-1 w-28 bg-background"
-															// biome-ignore lint/a11y/noAutofocus: intentional focus for inline edit
-															autoFocus
-														/>
-														<button
-															type="button"
-															onClick={() => handleAliasSave(entry.ip)}
-															className="text-xs text-primary hover:underline"
-														>
-															저장
-														</button>
-														<button
-															type="button"
-															onClick={() => setEditingIp(null)}
-															className="text-xs text-muted-foreground hover:underline"
-														>
-															취소
-														</button>
-													</div>
-												) : (
-													<div className="flex items-center gap-2">
-														<span
-															className="font-mono text-xs truncate max-w-[200px]"
-															title={entry.alias ? entry.ip : undefined}
-														>
-															{entry.alias ?? entry.ip}
-														</span>
-														{entry.alias && (
-															<span className="text-xs text-muted-foreground font-mono">
-																({entry.ip})
+											<tr
+												key={entry.ip}
+												className="border-b last:border-0 hover:bg-muted/20"
+											>
+												<td className="px-4 py-2 text-muted-foreground">
+													{idx + 1}
+												</td>
+												<td className="px-4 py-2">
+													{editingIp === entry.ip ? (
+														<div className="flex items-center gap-1">
+															<input
+																type="text"
+																value={editAlias}
+																onChange={(e) => setEditAlias(e.target.value)}
+																onKeyDown={(e) => {
+																	if (e.key === "Enter")
+																		handleAliasSave(entry.ip);
+																	if (e.key === "Escape") setEditingIp(null);
+																}}
+																placeholder="별칭 입력..."
+																className="h-6 text-xs border rounded px-1 w-28 bg-background"
+																// biome-ignore lint/a11y/noAutofocus: intentional focus for inline edit
+																autoFocus
+															/>
+															<button
+																type="button"
+																onClick={() => handleAliasSave(entry.ip)}
+																className="text-xs text-primary hover:underline"
+															>
+																저장
+															</button>
+															<button
+																type="button"
+																onClick={() => setEditingIp(null)}
+																className="text-xs text-muted-foreground hover:underline"
+															>
+																취소
+															</button>
+														</div>
+													) : (
+														<div className="flex items-center gap-2">
+															<span
+																className="font-mono text-xs truncate max-w-[200px]"
+																title={entry.alias ? entry.ip : undefined}
+															>
+																{entry.alias ?? entry.ip}
 															</span>
-														)}
-														<button
-															type="button"
-															onClick={() =>
-																handleAliasEdit(entry.ip, entry.alias)
-															}
-															className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-															title="별칭 편집"
-														>
-															✏️
-														</button>
-													</div>
-												)}
-											</td>
-											<td className="px-4 py-2 text-right font-mono">
-												{formatNumber(entry.requests)}
-											</td>
-											<td className="px-4 py-2 text-right font-mono text-muted-foreground">
-												{totalRequests > 0 ? ((entry.requests / totalRequests) * 100).toFixed(1) : "0.0"}%
-											</td>
-											<td className="px-4 py-2 text-right font-mono text-muted-foreground">
-												{formatNumber(entry.totalTokens)}
-											</td>
-											<td className="px-4 py-2 text-right font-mono text-muted-foreground">
-												{formatCost(entry.totalCost)}
-											</td>
-											<td className="px-4 py-2 text-right font-mono">
-												<span
-													className={
-														entry.successRate >= 90
-															? "text-green-500"
-															: entry.successRate >= 70
-																? "text-yellow-500"
-																: "text-red-500"
-													}
-												>
-													{entry.successRate.toFixed(1)}%
-												</span>
-											</td>
-										</tr>
-									));
+															{entry.alias && (
+																<span className="text-xs text-muted-foreground font-mono">
+																	({entry.ip})
+																</span>
+															)}
+															<button
+																type="button"
+																onClick={() =>
+																	handleAliasEdit(entry.ip, entry.alias)
+																}
+																className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+																title="별칭 편집"
+															>
+																✏️
+															</button>
+														</div>
+													)}
+												</td>
+												<td className="px-4 py-2 text-right font-mono">
+													{formatNumber(entry.requests)}
+												</td>
+												<td className="px-4 py-2 text-right font-mono text-muted-foreground">
+													{totalRequests > 0
+														? ((entry.requests / totalRequests) * 100).toFixed(
+																1,
+															)
+														: "0.0"}
+													%
+												</td>
+												<td className="px-4 py-2 text-right font-mono text-muted-foreground">
+													{formatNumber(entry.totalTokens)}
+												</td>
+												<td className="px-4 py-2 text-right font-mono text-muted-foreground">
+													{formatCost(entry.totalCost)}
+												</td>
+												<td className="px-4 py-2 text-right font-mono">
+													<span
+														className={
+															entry.successRate >= 90
+																? "text-green-500"
+																: entry.successRate >= 70
+																	? "text-yellow-500"
+																	: "text-red-500"
+														}
+													>
+														{entry.successRate.toFixed(1)}%
+													</span>
+												</td>
+											</tr>
+										));
 									})()}
 								</tbody>
 							</table>

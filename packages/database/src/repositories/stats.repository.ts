@@ -229,9 +229,7 @@ export class StatsRepository {
 	/**
 	 * Get top client IPs by request count (with optional alias join)
 	 */
-	async getClientIpStats(
-		limit = 10,
-	): Promise<
+	async getClientIpStats(limit = 10): Promise<
 		Array<{
 			ip: string;
 			alias?: string;

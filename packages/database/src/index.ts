@@ -15,14 +15,14 @@ export { migrateFromCcflare } from "./migrate-from-ccflare";
 export { ensureSchema, runMigrations } from "./migrations";
 export { getLegacyDbPath, resolveDbPath } from "./paths";
 export { analyzeIndexUsage } from "./performance-indexes";
+export type { ClientIpAlias } from "./repositories/client-ip-alias.repository";
+
+// Re-export repository classes
+export { ClientIpAliasRepository } from "./repositories/client-ip-alias.repository";
 export type {
 	ModelTranslation,
 	SimilarModel,
 } from "./repositories/model-translation.repository";
-
-// Re-export repository classes
-export { ClientIpAliasRepository } from "./repositories/client-ip-alias.repository";
-export type { ClientIpAlias } from "./repositories/client-ip-alias.repository";
 export { ModelTranslationRepository } from "./repositories/model-translation.repository";
 // Re-export repository types
 export type { StatsRepository } from "./repositories/stats.repository";
