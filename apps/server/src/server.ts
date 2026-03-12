@@ -20,7 +20,7 @@ import { AsyncDbWriter, DatabaseFactory } from "@better-ccflare/database";
 import { APIRouter, AuthService } from "@better-ccflare/http-api";
 import { SessionStrategy } from "@better-ccflare/load-balancer";
 import { Logger } from "@better-ccflare/logger";
-import { getProvider, usageCache } from "@better-ccflare/providers";
+import { getProvider } from "@better-ccflare/providers";
 import {
 	canUseInferenceProfileDynamic,
 	parseBedrockConfig,
@@ -29,7 +29,6 @@ import {
 import {
 	AutoRefreshScheduler,
 	getUsageWorker,
-	getValidAccessToken,
 	handleProxy,
 	type ProxyContext,
 	registerRefreshClearer,
@@ -168,8 +167,6 @@ let stopRateLimitCleanupJob: (() => void) | null = null;
 let stopDataCleanupJob: (() => void) | null = null;
 let autoRefreshScheduler: AutoRefreshScheduler | null = null;
 let memoryMonitorInterval: Timer | null = null;
-// Track usage polling retry timeouts for cleanup
-const usagePollingRetryTimeouts = new Map<string, NodeJS.Timeout>();
 
 // SSL/TLS configuration
 let tlsEnabled = false;
@@ -250,176 +247,6 @@ async function prewarmBedrockCache(account: Account, region: string) {
 		logger.error(
 			`Failed to pre-warm Bedrock caches for region ${region}: ${(error as Error).message}`,
 		);
-	}
-}
-
-/**
- * Start usage polling for an account with automatic token refresh
- * Temporarily resumes paused accounts for token refresh, then restores original state
- */
-function startUsagePollingWithRefresh(
-	account: Account,
-	proxyContext: ProxyContext,
-	startupDelayMs: number = 0,
-) {
-	const logger = new Logger("UsagePolling");
-	const MAX_RETRY_ATTEMPTS = 10;
-	let retryCount = 0;
-
-	// Initial polling with token refresh
-	const pollWithRefresh = async () => {
-		try {
-			// Create a token provider function that gets a fresh token each time
-			const tokenProvider = async () => {
-				// Get the current paused state from the database to avoid stale state issues
-				// This is important because the account might be paused/resumed via API during runtime
-				const currentAccount = await proxyContext.dbOps.getAccount(account.id);
-				const wasTemporarilyResumed = currentAccount?.paused === true;
-
-				// Update in-memory account with fresh token data from DB
-				// This prevents using stale tokens after re-authentication
-				if (currentAccount) {
-					account.access_token = currentAccount.access_token;
-					account.refresh_token = currentAccount.refresh_token;
-					account.expires_at = currentAccount.expires_at;
-				}
-
-				// If account is currently paused, temporarily resume it for token refresh
-				if (wasTemporarilyResumed) {
-					logger.debug(
-						`Temporarily resuming account ${account.name} for token refresh`,
-					);
-					proxyContext.dbOps.resumeAccount(account.id);
-					account.paused = false;
-				}
-
-				try {
-					// Get a valid access token (refreshes if necessary)
-					const accessToken = await getValidAccessToken(account, proxyContext);
-					return accessToken;
-				} finally {
-					// Restore paused state ONLY if we temporarily resumed it above
-					if (wasTemporarilyResumed) {
-						logger.debug(`Restoring paused state for account ${account.name}`);
-						proxyContext.dbOps.pauseAccount(account.id);
-						account.paused = true;
-					}
-				}
-			};
-
-			// Start usage polling with the token provider
-			usageCache.startPolling(
-				account.id,
-				tokenProvider,
-				account.provider,
-				60000, // Poll every 60s
-			);
-
-			// Reset retry count on success
-			retryCount = 0;
-			// Clear any tracked timeout since we succeeded
-			const existingTimeout = usagePollingRetryTimeouts.get(account.id);
-			if (existingTimeout) {
-				clearTimeout(existingTimeout);
-				usagePollingRetryTimeouts.delete(account.id);
-			}
-		} catch (error) {
-			logger.error(
-				`Error starting usage polling for account ${account.name}:`,
-				{
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
-					accountId: account.id,
-					provider: account.provider,
-					timestamp: new Date().toISOString(),
-					hasAccessToken: !!account.access_token,
-					hasRefreshToken: !!account.refresh_token,
-					expiresAt: account.expires_at
-						? new Date(account.expires_at).toISOString()
-						: null,
-				},
-			);
-
-			// Log additional context for common error types
-			if (error instanceof Error) {
-				if (
-					error.message.includes("401") ||
-					error.message.includes("Unauthorized")
-				) {
-					logger.error(
-						`Authentication failed for account ${account.name} - check API credentials`,
-						{
-							accountId: account.id,
-							error: error.message,
-						},
-					);
-				} else if (
-					error.message.includes("network") ||
-					error.message.includes("fetch")
-				) {
-					logger.error(
-						`Network error for account ${account.name} - check connectivity`,
-						{
-							accountId: account.id,
-							error: error.message,
-						},
-					);
-				} else if (error.message.includes("rate limit")) {
-					logger.error(
-						`Rate limited for account ${account.name} - backing off`,
-						{
-							accountId: account.id,
-							error: error.message,
-						},
-					);
-				}
-			}
-
-			// Clear any existing retry timeout before scheduling a new one
-			const existingTimeout = usagePollingRetryTimeouts.get(account.id);
-			if (existingTimeout) {
-				clearTimeout(existingTimeout);
-				usagePollingRetryTimeouts.delete(account.id);
-			}
-
-			// Check if we've exceeded max retry attempts
-			retryCount++;
-			if (retryCount >= MAX_RETRY_ATTEMPTS) {
-				logger.error(
-					`Max retry attempts (${MAX_RETRY_ATTEMPTS}) reached for account ${account.name}. Please check the account configuration and try restarting the server after resolving issues.`,
-				);
-				return;
-			}
-
-			// Don't restore paused state on error - let the user control pause/resume via API
-			// Retry with exponential backoff (5 min, 10 min, 20 min, ...)
-			const baseDelayMs = 5 * 60 * 1000; // 5 minutes
-			const delayMs = Math.min(
-				baseDelayMs * 2 ** (retryCount - 1),
-				60 * 60 * 1000, // Cap at 1 hour
-			);
-			logger.info(
-				`Scheduling retry ${retryCount}/${MAX_RETRY_ATTEMPTS} for account ${account.name} in ${Math.round(delayMs / 1000 / 60)} minutes`,
-			);
-
-			const timeoutId = setTimeout(() => {
-				logger.info(
-					`Retrying usage polling for account ${account.name} (attempt ${retryCount}/${MAX_RETRY_ATTEMPTS})`,
-				);
-				usagePollingRetryTimeouts.delete(account.id);
-				pollWithRefresh();
-			}, delayMs);
-
-			// Track the timeout for cleanup
-			usagePollingRetryTimeouts.set(account.id, timeoutId);
-		}
-	};
-
-	// Start the polling (with optional startup delay to stagger multiple accounts)
-	if (startupDelayMs > 0) {
-		setTimeout(() => pollWithRefresh(), startupDelayMs);
-	} else {
-		pollWithRefresh();
 	}
 }
 
@@ -951,144 +778,6 @@ Available endpoints:
 		);
 	}
 
-	// Start usage polling for Anthropic accounts with token refresh (regardless of paused status)
-	const anthropicAccounts = accounts.filter((a) => a.provider === "anthropic");
-	if (anthropicAccounts.length > 0) {
-		log.info(
-			`Found ${anthropicAccounts.length} Anthropic accounts, starting usage polling...`,
-		);
-		for (const [index, account] of anthropicAccounts.entries()) {
-			log.debug(`Processing account: ${account.name}`, {
-				accountId: account.id,
-				hasAccessToken: !!account.access_token,
-				hasRefreshToken: !!account.refresh_token,
-				paused: account.paused,
-				expiresAt: account.expires_at
-					? new Date(account.expires_at).toISOString()
-					: null,
-			});
-
-			if (account.access_token || account.refresh_token) {
-				// Start usage polling with token refresh capability
-				// Usage data fetching should work independently of account paused status
-				// Stagger startup by 5s per account to avoid simultaneous 429s on boot
-				const startupDelayMs = index * 5000;
-				startUsagePollingWithRefresh(account, proxyContext, startupDelayMs);
-				log.info(
-					`Started usage polling for account ${account.name}${startupDelayMs > 0 ? ` (delayed ${startupDelayMs / 1000}s)` : ""}`,
-				);
-			} else {
-				log.warn(
-					`Account ${account.name} has no access token or refresh token, skipping usage polling`,
-				);
-			}
-		}
-	} else {
-		log.info(`No Anthropic accounts found, usage polling will not start`);
-	}
-
-	// Start usage polling for NanoGPT accounts (PayG with optional subscription tracking)
-	const nanogptAccounts = accounts.filter((a) => a.provider === "nanogpt");
-	if (nanogptAccounts.length > 0) {
-		log.info(
-			`Found ${nanogptAccounts.length} NanoGPT accounts, starting usage polling...`,
-		);
-		for (const account of nanogptAccounts) {
-			log.debug(`Processing NanoGPT account: ${account.name}`, {
-				accountId: account.id,
-				hasApiKey: !!account.api_key,
-				paused: account.paused,
-				customEndpoint: account.custom_endpoint,
-			});
-
-			if (account.api_key) {
-				// NanoGPT uses API key authentication, no token refresh needed
-				// Create a simple token provider that returns the API key
-				const apiKeyProvider = async () => account.api_key || "";
-
-				// Start usage polling with the API key
-				usageCache.startPolling(
-					account.id,
-					apiKeyProvider,
-					account.provider,
-					90000, // Poll every 90 seconds (same as Anthropic)
-					account.custom_endpoint,
-				);
-				log.info(`Started usage polling for NanoGPT account ${account.name}`);
-			} else {
-				log.warn(
-					`NanoGPT account ${account.name} has no API key, skipping usage polling`,
-				);
-			}
-		}
-	} else {
-		log.info(`No NanoGPT accounts found, usage polling will not start`);
-	}
-
-	// Start usage polling for Zai accounts
-	const zaiAccounts = accounts.filter((a) => a.provider === "zai");
-	if (zaiAccounts.length > 0) {
-		log.info(
-			`Found ${zaiAccounts.length} Zai accounts, starting usage polling...`,
-		);
-		for (const account of zaiAccounts) {
-			log.debug(`Processing Zai account: ${account.name}`, {
-				accountId: account.id,
-				hasApiKey: !!account.api_key,
-				paused: account.paused,
-			});
-
-			if (account.api_key) {
-				// Zai uses API key authentication, no token refresh needed
-				// Create a simple token provider that returns the API key
-				const apiKeyProvider = async () => account.api_key || "";
-
-				// Start usage polling with the API key
-				usageCache.startPolling(
-					account.id,
-					apiKeyProvider,
-					account.provider,
-					90000, // Poll every 90 seconds (same as Anthropic)
-				);
-				log.info(`Started usage polling for Zai account ${account.name}`);
-			} else {
-				log.warn(
-					`Zai account ${account.name} has no API key, skipping usage polling`,
-				);
-			}
-		}
-	} else {
-		log.info(`No Zai accounts found, usage polling will not start`);
-	}
-
-	// Start usage polling for Kilo Gateway accounts
-	const kiloAccounts = accounts.filter((a) => a.provider === "kilo");
-	if (kiloAccounts.length > 0) {
-		log.info(
-			`Found ${kiloAccounts.length} Kilo Gateway accounts, starting usage polling...`,
-		);
-		for (const account of kiloAccounts) {
-			if (account.api_key) {
-				const apiKeyProvider = async () => account.api_key || "";
-				usageCache.startPolling(
-					account.id,
-					apiKeyProvider,
-					account.provider,
-					90000,
-				);
-				log.info(
-					`Started usage polling for Kilo Gateway account ${account.name}`,
-				);
-			} else {
-				log.warn(
-					`Kilo Gateway account ${account.name} has no API key, skipping usage polling`,
-				);
-			}
-		}
-	} else {
-		log.info(`No Kilo Gateway accounts found, usage polling will not start`);
-	}
-
 	// Pre-warm Bedrock model and inference profile caches
 	const bedrockAccounts = accounts.filter((a) => a.provider === "bedrock");
 	if (bedrockAccounts.length > 0) {
@@ -1172,21 +861,6 @@ async function handleGracefulShutdown(signal: string) {
 		// Stop token health monitoring
 		stopGlobalTokenHealthChecks();
 
-		// Clear all pending usage polling retry timeouts
-		if (usagePollingRetryTimeouts.size > 0) {
-			console.log(
-				`Clearing ${usagePollingRetryTimeouts.size} pending usage polling retry timeout(s)...`,
-			);
-			for (const [
-				_accountId,
-				timeoutId,
-			] of usagePollingRetryTimeouts.entries()) {
-				clearTimeout(timeoutId);
-			}
-			usagePollingRetryTimeouts.clear();
-		}
-
-		usageCache.clear(); // Stop all usage polling
 		terminateUsageWorker();
 		await shutdown();
 		console.log("✅ Shutdown complete");
