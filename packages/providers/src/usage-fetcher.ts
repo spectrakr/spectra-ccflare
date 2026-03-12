@@ -56,7 +56,23 @@ export type AnyUsageData =
 /**
  * Fetch usage data from Anthropic's OAuth usage endpoint
  */
-export async function fetchUsageData(
+interface UsageFetchResult {
+	data: UsageData | null;
+	/** Milliseconds to wait before next retry (set on 429 responses) */
+	retryAfterMs?: number;
+}
+
+function parseRetryAfterMs(header: string | null): number {
+	if (!header) return 60000;
+	const seconds = parseInt(header, 10);
+	if (!Number.isNaN(seconds)) return Math.max(seconds * 1000, 0);
+	const date = new Date(header);
+	if (!Number.isNaN(date.getTime()))
+		return Math.max(date.getTime() - Date.now(), 0);
+	return 60000;
+}
+
+async function fetchUsageDataWithResult(
 	accessToken: string,
 ): Promise<UsageFetchResult> {
 	try {
@@ -72,16 +88,12 @@ export async function fetchUsageData(
 
 		if (!response.ok) {
 			const errorMessage = response.statusText;
-			const responseHeaders = Object.fromEntries(response.headers.entries());
+			const retryAfterHeader = response.headers.get("retry-after");
+			const retryAfterMs = parseRetryAfterMs(retryAfterHeader);
 
-			// Handle rate limiting: respect Retry-After header if present
 			if (response.status === 429) {
-				const retryAfter = response.headers.get("retry-after");
-				const retryAfterMs = retryAfter
-					? Number(retryAfter) * 1000
-					: 5 * 60 * 1000; // default 5 min if no header
 				log.warn(
-					`Failed to fetch usage data: 429 Too Many Requests. Retry after ${Math.round(retryAfterMs / 1000)}s`,
+					`Usage data rate limited (429): retry after ${Math.round(retryAfterMs / 1000)}s`,
 				);
 				return { data: null, retryAfterMs };
 			}
@@ -92,23 +104,14 @@ export async function fetchUsageData(
 					`Failed to fetch usage data: ${response.status} ${errorMessage}`,
 					{
 						status: response.status,
-						statusText: errorMessage,
-						url: "https://api.anthropic.com/api/oauth/usage",
-						headers: responseHeaders,
-						errorBody: errorBody,
+						errorBody,
 						timestamp: new Date().toISOString(),
 					},
 				);
 			} catch {
 				log.error(
 					`Failed to fetch usage data: ${response.status} ${errorMessage}`,
-					{
-						status: response.status,
-						statusText: errorMessage,
-						url: "https://api.anthropic.com/api/oauth/usage",
-						headers: responseHeaders,
-						timestamp: new Date().toISOString(),
-					},
+					{ status: response.status, timestamp: new Date().toISOString() },
 				);
 			}
 			return { data: null };
@@ -117,7 +120,6 @@ export async function fetchUsageData(
 		const data = (await response.json()) as UsageData;
 		return { data };
 	} catch (error) {
-		// Ensure we have a proper error object for logging
 		const errorMessage =
 			error instanceof Error
 				? error.message
@@ -128,6 +130,12 @@ export async function fetchUsageData(
 		log.error("Error fetching usage data:", errorMessage || "Unknown error");
 		return { data: null };
 	}
+}
+
+export async function fetchUsageData(
+	accessToken: string,
+): Promise<UsageData | null> {
+	return (await fetchUsageDataWithResult(accessToken)).data;
 }
 
 /**
@@ -226,9 +234,11 @@ class UsageCache {
 	private tokenProviders = new Map<string, AccessTokenProvider>();
 	private providerTypes = new Map<string, string>(); // Track provider type for each account
 	private customEndpoints = new Map<string, string | null>(); // Track custom endpoints
+	private rateLimitDelays = new Map<string, number>(); // Retry-After delays per account
 
 	/**
-	 * Schedule the next poll with exponential backoff on failures
+	 * Schedule the next poll with exponential backoff on failures,
+	 * respecting any Retry-After delay from a previous 429 response.
 	 */
 	private scheduleNextPoll(
 		accountId: string,
@@ -239,18 +249,23 @@ class UsageCache {
 		overrideDelayMs?: number,
 	) {
 		const failures = this.failureCounts.get(accountId) ?? 0;
-		// Use override delay (e.g. from Retry-After header) if provided,
-		// otherwise exponential backoff capped at 30 minutes
-		const delay =
-			overrideDelayMs !== undefined
-				? overrideDelayMs
-				: failures === 0
-					? baseIntervalMs
-					: Math.min(baseIntervalMs * 2 ** failures, 30 * 60 * 1000);
+		// Exponential backoff capped at 30 minutes
+		const backoffDelay =
+			failures === 0
+				? baseIntervalMs
+				: Math.min(baseIntervalMs * 2 ** failures, 30 * 60 * 1000);
 
-		if (failures > 0 || overrideDelayMs !== undefined) {
+		// Respect Retry-After from previous 429 response
+		const rateLimitDelay = this.rateLimitDelays.get(accountId);
+		this.rateLimitDelays.delete(accountId);
+		const delay =
+			rateLimitDelay !== undefined
+				? Math.max(rateLimitDelay, backoffDelay)
+				: backoffDelay;
+
+		if (failures > 0 || rateLimitDelay !== undefined) {
 			log.info(
-				`Usage poll backoff for account ${accountId}: retry in ${Math.round(delay / 1000)}s${overrideDelayMs !== undefined ? " (rate-limited)" : ` (${failures} consecutive failure(s))`}`,
+				`Usage poll backoff for account ${accountId}: retry in ${Math.round(delay / 1000)}s (${failures} consecutive failure(s)${rateLimitDelay !== undefined ? `, rate limited` : ""})`,
 			);
 		}
 
@@ -393,6 +408,7 @@ class UsageCache {
 		if (this.tokenProviders.has(accountId)) {
 			this.tokenProviders.delete(accountId);
 			this.failureCounts.delete(accountId);
+			this.rateLimitDelays.delete(accountId);
 			// Clean up cache entry when polling stops to prevent memory leaks
 			this.cache.delete(accountId);
 			log.info(
@@ -500,17 +516,15 @@ class UsageCache {
 				}
 			} else {
 				// Default to Anthropic usage data
-				const result = await fetchUsageData(token);
+				const result = await fetchUsageDataWithResult(token);
 				if (result.retryAfterMs !== undefined) {
-					return { success: false, retryAfterMs: result.retryAfterMs };
+					this.rateLimitDelays.set(accountId, result.retryAfterMs);
 				}
-				if (result.data) {
-					this.cache.set(accountId, {
-						data: result.data,
-						timestamp: Date.now(),
-					});
-					const utilization = getRepresentativeUtilization(result.data);
-					const window = getRepresentativeWindow(result.data);
+				data = result.data;
+				if (data) {
+					this.cache.set(accountId, { data, timestamp: Date.now() });
+					const utilization = getRepresentativeUtilization(data as UsageData);
+					const window = getRepresentativeWindow(data as UsageData);
 					log.debug(
 						`Successfully fetched usage data for account ${accountId}: ${utilization}% (${window} window)`,
 					);
